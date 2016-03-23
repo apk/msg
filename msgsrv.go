@@ -10,7 +10,6 @@ import (
 	"strings"
 	"encoding/json"
 	"os"
-	"text/template"
 
 	"github.com/gorilla/websocket"
 )
@@ -193,12 +192,6 @@ func (h *hub) putdata (data []byte, addr []string) {
 	h.data <- msg{Ts: f, Data: j, Addr: addr}
 }
 
-var homeTempl *template.Template
-
-func homeHandler(c http.ResponseWriter, req *http.Request) {
-	homeTempl.Execute(c, req.Host)
-}
-
 var (
 	addr = flag.String("addr", ":3046", "http service address")
 )
@@ -210,18 +203,12 @@ func main() {
 	h := newHub()
 	go h.run()
 
-	homeTempl = template.Must(template.ParseFiles("t.html"))
-	http.HandleFunc("/msg", homeHandler)
-
 	http.Handle("/", http.FileServer(http.Dir(".")))
 
 	http.Handle("/msg/ws", wsHandler{h: h})
 
 	http.HandleFunc("/msg/in", func(w http.ResponseWriter, r *http.Request) {
 		body, err := ioutil.ReadAll(r.Body)
-		//for k, v := range r.Header {
-		//	fmt.Println(k, ": ", v)
-		//}
 		if err == nil {
 			h.putdata(body, []string{})
 		}
