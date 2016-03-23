@@ -236,5 +236,23 @@ func main() {
 
 	})))
 
+
+        testfunc := func(w http.ResponseWriter, r *http.Request) {
+		body, err := ioutil.ReadAll(r.Body)
+		for k, v := range r.Header {
+			fmt.Println(k, ": ", v)
+		}
+		if err == nil {
+			fmt.Println("body: ", body)
+		}
+		fmt.Println("method: ", r.Method)
+		fmt.Println("query: ", r.URL.RawQuery)
+
+	};
+
+	http.HandleFunc("/msg/test", testfunc);
+
+	http.HandleFunc("/msg/test/", testfunc);
+
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
