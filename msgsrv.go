@@ -21,12 +21,17 @@ type msg struct {
 	Addr []string `json:"a"`
 }
 
+type cmsg struct {
+	conn *connection
+	msg interface{}
+}
+
 type hub struct {
 	// Registered connections.
 	connections map[*connection]bool
 
 	// Inbound messages from the connections.
-	broadcast chan []byte
+	incoming chan cmsg
 
 	// Register requests from the connections.
 	register chan *connection
@@ -40,7 +45,7 @@ type hub struct {
 
 func newHub() *hub {
 	return &hub{
-		broadcast:   make(chan []byte),
+		incoming:    make(chan cmsg),
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
 		connections: make(map[*connection]bool),
@@ -67,6 +72,16 @@ func marsh(v interface{}) []byte {
 	return nil
 }
 
+func write_file(fn string, data []byte) {
+	f, err := os.OpenFile(fn, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0660)
+	if err == nil {
+		defer f.Close();
+		f.Write(data);
+	} else {
+		fmt.Printf("err=%v\n",err)
+	}
+}
+
 func (h *hub) run() {
 	for {
 		select {
@@ -80,9 +95,9 @@ func (h *hub) run() {
 				close(c.send)
 			}
 
-		case m := <-h.broadcast:
+		case m := <-h.incoming:
 			fmt.Printf("receive: %s\n", m)
-			h.bcast(m)
+			// h.bcast(m)
 
 		case s := <-h.data:
 			t := time.Now()
@@ -96,17 +111,16 @@ func (h *hub) run() {
 				"%02d:%02d:%02d: /%s %s\n",
 				hh, mm, ss, as, marsh(s.Data))
 			fmt.Print(ln)
-			f, err := os.OpenFile(fn, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0660)
-			if err == nil {
-				f.Write([]byte(ln))
-				f.Close()
-			} else {
-				fmt.Printf("err=%v\n",err)
-			}
+			write_file(fn, []byte(ln));
 
 			b := marsh(s)
-			fmt.Printf("%v\n", string(b))
 			h.bcast(b)
+
+			secs := int(s.Ts) / 65536;
+			fn = fmt.Sprintf("%02x", secs / 256);
+			_ = os.Mkdir(fn, 0770);
+			fn = fmt.Sprintf("%s/%02x", fn, secs % 256);
+			write_file(fn, append(b, byte('\n')));
 		}
 	}
 }
@@ -128,7 +142,11 @@ func (c *connection) reader() {
 		if err != nil {
 			break
 		}
-		c.h.broadcast <- message
+		var j interface{}
+		err = json.Unmarshal(message, &j)
+		if err == nil {
+			c.h.incoming <- cmsg{conn: c, msg: message}
+		}
 	}
 	c.ws.Close()
 }
@@ -167,11 +185,12 @@ func (wsh wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *hub) putdata (data []byte, addr []string) {
 	var j interface{}
 	err := json.Unmarshal(data, &j)
-	if err == nil {
-		t := time.Now()
-		f := float64(t.UnixNano()) / 1.0e9;
-		h.data <- msg{Ts: f, Data: j, Addr: addr}
+	if err != nil {
+		j = string(data)
 	}
+	t := time.Now()
+	f := float64(t.UnixNano()) / 1.0e9;
+	h.data <- msg{Ts: f, Data: j, Addr: addr}
 }
 
 var homeTempl *template.Template
