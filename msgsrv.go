@@ -109,7 +109,6 @@ func (h *hub) run() {
 			ln := fmt.Sprintf(
 				"%02d:%02d:%02d: /%s %s\n",
 				hh, mm, ss, as, marsh(s.Data))
-			fmt.Print(ln)
 			write_file(fn, []byte(ln));
 
 			b := marsh(s)
