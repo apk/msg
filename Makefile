@@ -1,6 +1,5 @@
 IMAGE_NAME=apky/msgsrv
 VERSION=$(shell git describe)
-DATA=/data/msg
 
 msgsrv: msgsrv.go
 	@echo Compiling...
