@@ -17,5 +17,5 @@ of paths, and to DELETE the notion of the current message for a given
 path. If messages are logged this deletion is logged and retrievable
 as well.
 
-Paths can be provided messages via the websocket interface as well,
+Paths can be provided via messages on the websocket interface as well,
 and set to be automatically deleted when the websocket connection closes.
