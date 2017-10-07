@@ -1,6 +1,10 @@
 FROM golang:alpine3.6 AS binary
 ADD . /app
 WORKDIR /app
+RUN apk update && \
+    apk upgrade && \
+    apk add git
+RUN go get github.com/gorilla/websocket
 RUN CGO_ENABLED=0 go build -o msgsrv
 
 FROM scratch
