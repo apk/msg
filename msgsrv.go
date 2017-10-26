@@ -187,6 +187,11 @@ func (h *hub) run() {
 								}
 							}
 
+							for i := 0; i < len(res)/2; i++ {
+								j := len(res) - i - 1
+								res[i], res[j] = res[j], res[i]
+							}
+
 							x, err := json.Marshal(select_reply{Ts: f, Msgs: res})
 							r := json.RawMessage(x)
 							resp := response{Id: req.Id, Val: &r}
