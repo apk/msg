@@ -225,6 +225,11 @@ func (h *hub) run() {
 
 			events=append(events,s.Msg)
 
+			if len(events) > 86400 {
+				// Drop the first third of events.
+				events=events[len(events)/3:]
+			}
+
 			secs := int(s.Msg.Ts) / 65536;
 			fn = fmt.Sprintf("%02x", secs / 256);
 			_ = os.Mkdir(fn, 0770);
