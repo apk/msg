@@ -166,7 +166,6 @@ func (h *hub) run() {
 			}
 
 		case m := <-h.incoming:
-			fmt.Printf("receive: %s\n", m)
 			var req request
 			err := json.Unmarshal(m.msg, &req)
 			if err == nil {
@@ -178,7 +177,6 @@ func (h *hub) run() {
 						err = json.Unmarshal(m.msg, &sel)
 					}
 					if err == nil {
-						fmt.Printf("patterns: %v\n", sel.Patterns)
 						h.putevt(func (f float64) {
 							m.conn.patterns = sel.Patterns
 							res := []msg{}
@@ -211,7 +209,6 @@ func (h *hub) run() {
 						err = json.Unmarshal(m.msg, &post)
 					}
 					if err == nil {
-						fmt.Printf("post: %v %v\n", post.Addr, post.Data)
 						h.putdata (post.Data, post.Addr, func(f float64) {
 							// TODO: Why do I need to put this into the event handler?
 							// We're already in it?
