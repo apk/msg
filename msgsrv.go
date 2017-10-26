@@ -136,6 +136,9 @@ func write_file(fn string, data []byte) {
 }
 
 func (h *hub) run() {
+
+	events := []msg{}
+
 	for {
 		select {
 
@@ -207,6 +210,8 @@ func (h *hub) run() {
 
 			b := marsh(s.Msg)
 			h.bcast(b,s.Msg.Addr)
+
+			events=append(events,s.Msg)
 
 			secs := int(s.Msg.Ts) / 65536;
 			fn = fmt.Sprintf("%02x", secs / 256);
