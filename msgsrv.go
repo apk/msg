@@ -1,3 +1,5 @@
+// run-on-change msgsrv.go -- g build msgsrv.go -- ./msgsrv --addr 127.0.0.1:3046
+
 package main
 
 import (
@@ -20,9 +22,39 @@ type msg struct {
 	Addr []string `json:"a"`
 }
 
+type act struct {
+	Msg msg
+	Action func(float64)
+}
+
+type request struct {
+	Id interface{} `json:"$"`
+	Cmd string `json:"!"`
+	Val *json.RawMessage `json:"#"`
+}
+
+type response struct {
+	Id interface{} `json:"$"`
+	Ret interface{} `json:"?"`
+	Val *json.RawMessage `json:"#"`
+}
+
+type select_param struct {
+	Patterns [][]string `json:"patterns"`
+}
+
+type post_param struct {
+	Addr []string `json:"a"`
+	Data interface{} `json:"d"`
+}
+
+type post_reply struct {
+	Ts float64 `json:"t"`
+}
+
 type cmsg struct {
 	conn *connection
-	msg interface{}
+	msg []byte
 }
 
 type hub struct {
@@ -38,8 +70,11 @@ type hub struct {
 	// Unregister requests from connections.
 	unregister chan *connection
 
-	// Data coming in.
-	data chan msg;
+	// Data coming in, plus an action.
+	data chan act;
+}
+
+func oops() {
 }
 
 func newHub() *hub {
@@ -48,17 +83,36 @@ func newHub() *hub {
 		register:    make(chan *connection),
 		unregister:  make(chan *connection),
 		connections: make(map[*connection]bool),
-		data:        make(chan msg),
+		data:        make(chan act, 512),           // TODO: Size
 	}
 }
 
-func (h *hub) bcast (m []byte) {
+func match_addr(pat [][]string, addr []string) bool {
+	if len(pat) == 0 {
+		return true
+	}
+	for _, p := range pat {
+		for i, v := range addr {
+			if i >= len(p) {
+				return true
+			}
+			if v != p [i] {
+				break
+			}
+		}
+	}
+	return false
+}
+
+func (h *hub) bcast (m []byte,addr []string) {
 	for c := range h.connections {
-		select {
-		case c.send <- m:
-		default:
-			delete(h.connections, c)
-			close(c.send)
+		if match_addr(c.pattern,addr) {
+			select {
+			case c.send <- m:
+			default:
+				delete(h.connections, c)
+				close(c.send)
+			}
 		}
 	}
 }
@@ -96,29 +150,70 @@ func (h *hub) run() {
 
 		case m := <-h.incoming:
 			fmt.Printf("receive: %s\n", m)
+			var req request
+			err := json.Unmarshal(m.msg, &req)
+			if err == nil {
+				if req.Cmd == "select" {
+					var sel select_param;
+					err = json.Unmarshal(*req.Val, &sel)
+					if err == nil {
+						fmt.Printf("pattern: %v\n", sel.Patterns)
+					}
+					m.conn.pattern = sel.Patterns
+				} else if req.Cmd == "post" {
+					var post post_param;
+					err = json.Unmarshal(*req.Val, &post)
+					if err == nil {
+						fmt.Printf("post: %v %v\n", post.Addr, post.Data)
+						h.putdata (post.Data, post.Addr, func(f float64) {
+							x, err := json.Marshal(post_reply{Ts: f})
+							r := json.RawMessage(x)
+							resp := response{Id: req.Id, Val: &r}
+							// TODO: Dup code!
+							b, err := json.Marshal(resp)
+							if err == nil {
+								m.conn.send <- b
+							} else {
+								_ = oops
+							}
+						})
+					}
+				} else {
+					resp := response{Id: req.Id, Ret: false}
+					b, err := json.Marshal(resp)
+					if err == nil {
+						m.conn.send <- b
+					} else {
+						_ = oops
+					}
+				}
+			}
 			// h.bcast(m)
 
 		case s := <-h.data:
 			t := time.Now()
+			f := float64(t.UnixNano()) / 1.0e9;
+			s.Msg.Ts = f
 			yy, mn, dy := t.Date()
 			hh, mm, ss := t.Clock()
-			as := strings.Join(s.Addr, "/")
+			as := strings.Join(s.Msg.Addr, "/")
 			fn := fmt.Sprintf(
 				"log-%04d-%02d-%02d.txt",
 				yy, mn, dy)
 			ln := fmt.Sprintf(
 				"%02d:%02d:%02d: /%s %s\n",
-				hh, mm, ss, as, marsh(s.Data))
+				hh, mm, ss, as, marsh(s.Msg.Data))
 			write_file(fn, []byte(ln));
 
-			b := marsh(s)
-			h.bcast(b)
+			b := marsh(s.Msg)
+			h.bcast(b,s.Msg.Addr)
 
-			secs := int(s.Ts) / 65536;
+			secs := int(s.Msg.Ts) / 65536;
 			fn = fmt.Sprintf("%02x", secs / 256);
 			_ = os.Mkdir(fn, 0770);
 			fn = fmt.Sprintf("%s/%02x", fn, secs % 256);
 			write_file(fn, append(b, byte('\n')));
+			s.Action(f)
 		}
 	}
 }
@@ -132,6 +227,9 @@ type connection struct {
 
 	// The hub.
 	h *hub
+
+	// The selections
+	pattern [][]string
 }
 
 func (c *connection) reader() {
@@ -140,8 +238,6 @@ func (c *connection) reader() {
 		if err != nil {
 			break
 		}
-		var j interface{}
-		err = json.Unmarshal(message, &j)
 		if err == nil {
 			c.h.incoming <- cmsg{conn: c, msg: message}
 		}
@@ -180,15 +276,17 @@ func (wsh wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.reader()
 }
 
-func (h *hub) putdata (data []byte, addr []string) {
+func (h *hub) putstrdata (data []byte, addr []string) {
 	var j interface{}
 	err := json.Unmarshal(data, &j)
 	if err != nil {
 		j = string(data)
 	}
-	t := time.Now()
-	f := float64(t.UnixNano()) / 1.0e9;
-	h.data <- msg{Ts: f, Data: j, Addr: addr}
+	h.putdata(j, addr, func(f float64) {})
+}
+
+func (h *hub) putdata (j interface{}, addr []string, action func(float64)) {
+	h.data <- act{Msg: msg{Data: j, Addr: addr}, Action: action}
 }
 
 var (
@@ -209,7 +307,7 @@ func main() {
 	http.HandleFunc("/msg/in", func(w http.ResponseWriter, r *http.Request) {
 		body, err := ioutil.ReadAll(r.Body)
 		if err == nil {
-			h.putdata(body, []string{})
+			h.putstrdata(body, []string{})
 		}
 
 	})
@@ -217,7 +315,7 @@ func main() {
 	http.Handle("/msg/in/", http.StripPrefix("/msg/in/",http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := ioutil.ReadAll(r.Body)
 		if err == nil {
-			h.putdata(body, strings.Split(r.URL.Path, "/"))
+			h.putstrdata(body, strings.Split(r.URL.Path, "/"))
 		}
 
 	})))
