@@ -27,6 +27,10 @@ type act struct {
 	Action func(float64)
 }
 
+type evt struct {
+	Action func(float64)
+}
+
 type request struct {
 	Id interface{} `json:"$"`
 	Cmd string `json:"!"`
@@ -72,6 +76,9 @@ type hub struct {
 
 	// Data coming in, plus an action.
 	data chan act;
+
+	// Events, only an action.
+	evts chan evt;
 }
 
 func oops() {
@@ -193,6 +200,11 @@ func (h *hub) run() {
 			}
 			// h.bcast(m)
 
+		case s := <-h.evts:
+			t := time.Now()
+			f := float64(t.UnixNano()) / 1.0e9;
+			s.Action(f)
+
 		case s := <-h.data:
 			t := time.Now()
 			f := float64(t.UnixNano()) / 1.0e9;
@@ -288,6 +300,10 @@ func (h *hub) putstrdata (data []byte, addr []string) {
 		j = string(data)
 	}
 	h.putdata(j, addr, func(f float64) {})
+}
+
+func (h *hub) putevt (action func(float64)) {
+	h.evts <- evt{Action: action}
 }
 
 func (h *hub) putdata (j interface{}, addr []string, action func(float64)) {
