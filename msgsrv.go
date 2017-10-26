@@ -45,6 +45,12 @@ type response struct {
 
 type select_param struct {
 	Patterns [][]string `json:"patterns"`
+	Count int `json:"n"`
+}
+
+type select_reply struct {
+	Ts float64 `json:"t"`
+	Msgs []msg `json:"m"`
 }
 
 type post_param struct {
@@ -113,7 +119,7 @@ func match_addr(pat [][]string, addr []string) bool {
 
 func (h *hub) bcast (m []byte,addr []string) {
 	for c := range h.connections {
-		if match_addr(c.pattern,addr) {
+		if match_addr(c.patterns,addr) {
 			select {
 			case c.send <- m:
 			default:
@@ -167,9 +173,29 @@ func (h *hub) run() {
 					var sel select_param;
 					err = json.Unmarshal(*req.Val, &sel)
 					if err == nil {
-						fmt.Printf("pattern: %v\n", sel.Patterns)
+						fmt.Printf("patterns: %v\n", sel.Patterns)
+						h.putevt(func (f float64) {
+							m.conn.patterns = sel.Patterns
+							res := []msg{}
+							for i := len(events) - 1; len(res) < sel.Count && i >= 0; i -- {
+								e := events [i]
+								if match_addr (m.conn.patterns, e.Addr) {
+									res = append(res, e)
+								}
+							}
+
+							x, err := json.Marshal(select_reply{Ts: f, Msgs: res})
+							r := json.RawMessage(x)
+							resp := response{Id: req.Id, Val: &r}
+							// TODO: Dup code!
+							b, err := json.Marshal(resp)
+							if err == nil {
+								m.conn.send <- b
+							} else {
+								_ = oops
+							}
+						})
 					}
-					m.conn.pattern = sel.Patterns
 				} else if req.Cmd == "post" {
 					var post post_param;
 					err = json.Unmarshal(*req.Val, &post)
