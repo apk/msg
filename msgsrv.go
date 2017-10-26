@@ -97,6 +97,7 @@ func newHub() *hub {
 		unregister:  make(chan *connection),
 		connections: make(map[*connection]bool),
 		data:        make(chan act, 512),           // TODO: Size
+		evts:        make(chan evt, 512),           // TODO: Size
 	}
 }
 
