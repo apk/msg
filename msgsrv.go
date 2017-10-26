@@ -247,11 +247,11 @@ type connection struct {
 	// Buffered channel of outbound messages.
 	send chan []byte
 
-	// The hub.
+	// The hub our connection is on.
 	h *hub
 
-	// The selections
-	pattern [][]string
+	// The selections.
+	patterns [][]string
 }
 
 func (c *connection) reader() {
