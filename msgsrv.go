@@ -172,7 +172,11 @@ func (h *hub) run() {
 			if err == nil {
 				if req.Cmd == "select" {
 					var sel select_param;
-					err = json.Unmarshal(*req.Val, &sel)
+					if req.Val != nil {
+						err = json.Unmarshal(*req.Val, &sel)
+					} else {
+						err = json.Unmarshal(m.msg, &sel)
+					}
 					if err == nil {
 						fmt.Printf("patterns: %v\n", sel.Patterns)
 						h.putevt(func (f float64) {
@@ -196,10 +200,16 @@ func (h *hub) run() {
 								_ = oops
 							}
 						})
+					} else {
+						fmt.Printf("paterr: %v\n", err)
 					}
 				} else if req.Cmd == "post" {
 					var post post_param;
-					err = json.Unmarshal(*req.Val, &post)
+					if req.Val != nil {
+						err = json.Unmarshal(*req.Val, &post)
+					} else {
+						err = json.Unmarshal(m.msg, &post)
+					}
 					if err == nil {
 						fmt.Printf("post: %v %v\n", post.Addr, post.Data)
 						h.putdata (post.Data, post.Addr, func(f float64) {
@@ -214,6 +224,8 @@ func (h *hub) run() {
 								_ = oops
 							}
 						})
+					} else {
+						fmt.Printf("posterr: %v\n", err)
 					}
 				} else {
 					resp := response{Id: req.Id, Ret: false}
