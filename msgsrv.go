@@ -105,15 +105,17 @@ func match_addr(pat [][]string, addr []string) bool {
 	if len(pat) == 0 {
 		return true
 	}
+outer:
 	for _, p := range pat {
-		for i, v := range addr {
-			if i >= len(p) {
-				return true
-			}
-			if v != p [i] {
-				break
+		if len(p) > len(addr) {
+			continue outer // pattern is longer than addr - can't match
+		}
+		for i, q := range p {
+			if q != addr [i] {
+				continue outer // Doesn't match
 			}
 		}
+		return true;
 	}
 	return false
 }
